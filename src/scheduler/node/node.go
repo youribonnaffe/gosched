@@ -1,87 +1,81 @@
-package main
+package node
 
 import (
-	"encoding/json"
+	"bufio"
+	"bytes"
 	"log"
-	"net/http"
-	"os"
-	"os/signal"
+	"os/exec"
+	"scheduler/node/transport"
 	"scheduler/shared"
-	"time"
 )
 
-func main() {
-
-	// list all jobs
-	// take a pending one
-	// run it
-	// mark it as finished
-	// and again
-
-	workers := make(chan *shared.Task)
-	go worker(workers)
-	go worker(workers)
-
-	ticker := time.NewTicker(100 * time.Millisecond)
-	quit := make(chan struct{})
-	go func() {
-		for {
-			select {
-			case <-ticker.C:
-				// do stuff
-
-				r, _ := http.Get("http://localhost:8080/tasks")
-
-				decoder := json.NewDecoder(r.Body)
-
-				tasks := make(map[string]*shared.Task)
-
-				decoder.Decode(&tasks)
-
-				for id, task := range tasks {
-					if task.Status == shared.Pending {
-
-						log.Println("starting on", id)
-						workers <- task
-						log.Println("started on", id)
-						break
-					}
-				}
-
-				defer r.Body.Close()
-
-			case <-quit:
-				log.Println("done")
-				ticker.Stop()
-				return
-			}
-		}
-	}()
-
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt)
-	go func() {
-		for sig := range c {
-			// sig is a ^C, handle it
-			log.Println("sig", sig)
-		}
-	}()
-	select {}
-	log.Println("end")
+type Node struct {
+	Size  int
+	tasks chan *shared.Task
+	t     transport.Protocol
 }
 
-func worker(tasks <-chan *shared.Task) {
-	for t := range tasks {
-		log.Println("working on", t.Uuid)
-		patch("http://localhost:8080/tasks/" + t.Uuid)
-		// TODO check it is ok to start working on it
-		time.Sleep(10 * time.Second)
-		log.Println("done working on", t.Uuid)
+func Start(size int, t transport.Protocol) Node {
+	tasks := make(chan *shared.Task)
+	for i := 0; i < size; i++ {
+		go worker(t, tasks)
 	}
+	return Node{Size: size, t: t, tasks: tasks}
 }
 
-func patch(path string) (resp *http.Response, err error) {
-	client := &http.Client{}
-	req, _ := http.NewRequest("PATCH", path, nil)
-	return client.Do(req)
+func (node Node) Run() bool {
+	tasks, err := node.t.ListTasks(shared.Pending)
+	if err == nil {
+		ret := false
+		for id, task := range tasks {
+			log.Println("starting on", id)
+			node.tasks <- &task
+			log.Println("started on", id)
+			ret = true
+		}
+		return ret
+	} else {
+		log.Println("Could not contact server", err)
+		return false
+	}
+
+}
+
+func worker(t transport.Protocol, tasks <-chan *shared.Task) {
+	for task := range tasks {
+		log.Println("working on", task.Uuid)
+
+		t.Update(shared.Task{Status: shared.Running, Uuid: task.Uuid})
+
+		// TODO check it is ok to start working on it
+
+		cmd := exec.Command(task.Executable)
+		stdout, _ := cmd.StdoutPipe()
+		if err := cmd.Start(); err != nil {
+			log.Println(err)
+		}
+		var out bytes.Buffer
+		waitCmdOutput := make(chan bool)
+		go func() {
+			bufCmdOut := bufio.NewReader(stdout)
+			for {
+				line, _, err := bufCmdOut.ReadLine()
+				if err != nil {
+					waitCmdOutput <- true
+					break
+				} else {
+					log.Println("###", string(line))
+					out.Write(line)
+				}
+			}
+		}()
+		<-waitCmdOutput
+		if err := cmd.Wait(); err != nil {
+			log.Println(err)
+		} else {
+			log.Println("done working on", task.Uuid, "output is", out.String())
+		}
+
+		t.Update(shared.Task{Uuid: task.Uuid, Status: shared.Finished, Output: out.String()})
+	}
 }

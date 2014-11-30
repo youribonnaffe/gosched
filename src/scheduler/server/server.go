@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"crypto/rand"
@@ -10,19 +10,12 @@ import (
 	"strings"
 )
 
-func main() {
-	store := NewStore()
-
-	http.HandleFunc("/tasks/", store.TaskHandler)
-	http.ListenAndServe(":8080", nil)
-}
-
 type Store struct {
-	tasks map[string]*shared.Task
+	Tasks map[string]*shared.Task
 }
 
 func NewStore() *Store {
-	return &Store{tasks: make(map[string]*shared.Task)}
+	return &Store{Tasks: make(map[string]*shared.Task)}
 }
 
 func (store *Store) TaskHandler(w http.ResponseWriter, r *http.Request) {
@@ -34,9 +27,9 @@ func (store *Store) TaskHandler(w http.ResponseWriter, r *http.Request) {
 	if len(pathParts) == 3 && pathParts[2] != "" {
 		taskId := pathParts[2]
 		if r.Method == "GET" {
-			log.Println("Get task %s", taskId)
+			log.Println("Get task", taskId)
 
-			task, ok := store.tasks[taskId]
+			task, ok := store.Tasks[taskId]
 
 			if !ok {
 				http.NotFound(w, r)
@@ -49,7 +42,7 @@ func (store *Store) TaskHandler(w http.ResponseWriter, r *http.Request) {
 			log.Println("Starting", taskId)
 
 			// TODO read attribute and merge
-			task, ok := store.tasks[taskId]
+			task, ok := store.Tasks[taskId]
 
 			if !ok {
 				http.NotFound(w, r)
@@ -57,6 +50,17 @@ func (store *Store) TaskHandler(w http.ResponseWriter, r *http.Request) {
 			}
 
 			task.Status = shared.Running
+
+			newState := shared.Task{}
+			decoder := json.NewDecoder(r.Body)
+			err := decoder.Decode(&newState)
+			if err != nil {
+				log.Println(err)
+			} else {
+				task.Status = newState.Status
+				task.Output = newState.Output
+				log.Println("Update", newState)
+			}
 
 			write(w, task)
 			return
@@ -68,18 +72,28 @@ func (store *Store) TaskHandler(w http.ResponseWriter, r *http.Request) {
 		decoder.Decode(&task)
 
 		task.Uuid = uuid()
-		store.tasks[task.Uuid] = task
+		store.Tasks[task.Uuid] = task
 		task.Status = shared.Pending
 
-		log.Println("Saving %s %+v", uuid, task)
+		log.Println("Saving", uuid, task)
 
+		w.Header().Set("Location", "/tasks/"+task.Uuid)
+		w.WriteHeader(http.StatusCreated)
 		write(w, task)
 		return
 
 	} else if r.Method == "GET" {
-		log.Println("All tasks")
 
-		encoded, _ := json.Marshal(store.tasks)
+		status := r.URL.Query().Get("status")
+		log.Println("All tasks", status)
+		v := make([]*shared.Task, 0, len(store.Tasks))
+
+		for _, value := range store.Tasks {
+			if status == "" || value.Status == status {
+				v = append(v, value)
+			}
+		}
+		encoded, _ := json.Marshal(v)
 		w.Write(encoded)
 		return
 	}
