@@ -18,7 +18,9 @@ func main() {
 	// mark it as finished
 	// and again
 
-	runtime.GOMAXPROCS(6)
+	runtime.GOMAXPROCS(8)
+
+	log.SetFlags(log.Lmicroseconds)
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt)
@@ -30,11 +32,11 @@ func main() {
 	}()
 
 	transport := transport.HttpNodeTransport{Url: "http://localhost:8080"}
-	node := node.Start(100, transport)
+	node := node.Start(8, transport)
 	log.Println("Starting node with", node.Size, "workers")
 	for {
 		if !node.Run() {
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(1 * time.Millisecond)
 		}
 	}
 

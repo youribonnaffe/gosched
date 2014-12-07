@@ -11,14 +11,14 @@ import (
 
 type Node struct {
 	Size  int
-	tasks chan *shared.Task
+	tasks chan shared.Task
 	t     transport.Protocol
 }
 
 func Start(size int, t transport.Protocol) Node {
-	tasks := make(chan *shared.Task)
+	tasks := make(chan shared.Task)
 	for i := 0; i < size; i++ {
-		go worker(t, tasks)
+		go worker(i, t, tasks)
 	}
 	return Node{Size: size, t: t, tasks: tasks}
 }
@@ -26,14 +26,14 @@ func Start(size int, t transport.Protocol) Node {
 func (node Node) Run() bool {
 	tasks, err := node.t.ListTasks(shared.Pending)
 	if err == nil {
-		ret := false
-		for id, task := range tasks {
-			log.Println("starting on", id)
-			node.tasks <- &task
-			log.Println("started on", id)
-			ret = true
+		if len(tasks) == 0 {
+			return false
 		}
-		return ret
+		log.Println("Got", tasks)
+		for _, task := range tasks {
+			node.tasks <- task
+		}
+		return true
 	} else {
 		log.Println("Could not contact server", err)
 		return false
@@ -41,13 +41,16 @@ func (node Node) Run() bool {
 
 }
 
-func worker(t transport.Protocol, tasks <-chan *shared.Task) {
+func worker(id int, t transport.Protocol, tasks chan shared.Task) {
 	for task := range tasks {
-		log.Println("working on", task.Uuid)
+		log.Println("working on", id, &task, task.Uuid)
 
-		t.Update(shared.Task{Status: shared.Running, Uuid: task.Uuid})
+		err := t.Update(shared.Task{Status: shared.Running, Uuid: task.Uuid})
 
-		// TODO check it is ok to start working on it
+		if err != nil {
+			log.Println("Cannot start task, probably already running somewhere", err)
+			break
+		}
 
 		cmd := exec.Command(task.Executable)
 		stdout, _ := cmd.StdoutPipe()
@@ -66,6 +69,7 @@ func worker(t transport.Protocol, tasks <-chan *shared.Task) {
 				} else {
 					log.Println("###", string(line))
 					out.Write(line)
+					// log streaming here?
 				}
 			}
 		}()
@@ -73,7 +77,7 @@ func worker(t transport.Protocol, tasks <-chan *shared.Task) {
 		if err := cmd.Wait(); err != nil {
 			log.Println(err)
 		} else {
-			log.Println("done working on", task.Uuid, "output is", out.String())
+			log.Println("done working on", id, task.Uuid, "output is", out.String())
 		}
 
 		t.Update(shared.Task{Uuid: task.Uuid, Status: shared.Finished, Output: out.String()})

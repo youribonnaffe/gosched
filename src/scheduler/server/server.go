@@ -8,14 +8,23 @@ import (
 	"net/http"
 	"scheduler/shared"
 	"strings"
+	"sync"
 )
 
 type Store struct {
-	Tasks map[string]*shared.Task
+	lock  sync.RWMutex
+	Tasks map[string]*LockedTask
 }
 
+type LockedTask struct {
+	lock sync.Mutex
+	task *shared.Task
+}
+
+var pollingClients chan chan bool = make(chan chan bool)
+
 func NewStore() *Store {
-	return &Store{Tasks: make(map[string]*shared.Task)}
+	return &Store{Tasks: make(map[string]*LockedTask)}
 }
 
 func (store *Store) TaskHandler(w http.ResponseWriter, r *http.Request) {
@@ -36,20 +45,22 @@ func (store *Store) TaskHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			write(w, task)
+			write(w, task.task)
 			return
 		} else if r.Method == "PATCH" {
-			log.Println("Starting", taskId)
+			log.Println("Updating", taskId)
 
 			// TODO read attribute and merge
+
+			// lock task
+
 			task, ok := store.Tasks[taskId]
 
+			task.lock.Lock()
 			if !ok {
 				http.NotFound(w, r)
 				return
 			}
-
-			task.Status = shared.Running
 
 			newState := shared.Task{}
 			decoder := json.NewDecoder(r.Body)
@@ -57,40 +68,99 @@ func (store *Store) TaskHandler(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				log.Println(err)
 			} else {
-				task.Status = newState.Status
-				task.Output = newState.Output
+				err := task.task.ChangeStatus(newState.Status)
+				if err != nil {
+					http.Error(w, "Task already running", http.StatusInternalServerError)
+					task.lock.Unlock()
+					return
+				}
+				task.task.Output = newState.Output
 				log.Println("Update", newState)
 			}
 
-			write(w, task)
+			task.lock.Unlock()
+
+			write(w, task.task)
+			log.Println("Done Updating", taskId)
 			return
 		}
 	} else if r.Method == "POST" {
 
 		decoder := json.NewDecoder(r.Body)
+		defer r.Body.Close()
 		var task *shared.Task
 		decoder.Decode(&task)
 
 		task.Uuid = uuid()
-		store.Tasks[task.Uuid] = task
 		task.Status = shared.Pending
 
-		log.Println("Saving", uuid, task)
+		store.lock.Lock() // TODO on read too
+		store.Tasks[task.Uuid] = &LockedTask{task: task}
+		store.lock.Unlock()
+
+		log.Println("Saving", task)
+
+	Loop:
+		for {
+			select {
+			case pollingClient := <-pollingClients:
+				pollingClient <- true
+			default:
+				break Loop
+			}
+		}
 
 		w.Header().Set("Location", "/tasks/"+task.Uuid)
 		w.WriteHeader(http.StatusCreated)
 		write(w, task)
 		return
 
-	} else if r.Method == "GET" {
+	} else if r.Method == "GET" { // eventually consistent?
 
+		polling := r.URL.Query().Get("polling")
 		status := r.URL.Query().Get("status")
 		log.Println("All tasks", status)
+
+		if polling == "true" {
+			v := make([]*shared.Task, 0, len(store.Tasks))
+
+			for _, value := range store.Tasks {
+				if status == "" || value.task.Status == status {
+					v = append(v, value.task)
+				}
+			}
+
+			if len(v) > 0 {
+				encoded, _ := json.Marshal(v)
+				w.Write(encoded)
+				return
+			}
+
+			pollingClient := make(chan bool)
+
+			select {
+			case pollingClients <- pollingClient:
+				<-pollingClient
+
+				v := make([]*shared.Task, 0, len(store.Tasks))
+
+				for _, value := range store.Tasks {
+					if status == "" || value.task.Status == status {
+						v = append(v, value.task)
+					}
+				}
+
+				encoded, _ := json.Marshal(v)
+				w.Write(encoded)
+				return
+			}
+		}
+
 		v := make([]*shared.Task, 0, len(store.Tasks))
 
 		for _, value := range store.Tasks {
-			if status == "" || value.Status == status {
-				v = append(v, value)
+			if status == "" || value.task.Status == status {
+				v = append(v, value.task)
 			}
 		}
 		encoded, _ := json.Marshal(v)

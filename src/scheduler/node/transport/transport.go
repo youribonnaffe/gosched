@@ -3,6 +3,7 @@ package transport
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -20,7 +21,7 @@ type HttpNodeTransport struct {
 
 func (t HttpNodeTransport) ListTasks(status string) (tasks []shared.Task, err error) {
 
-	r, err := http.Get(t.Url + "/tasks?status=" + status)
+	r, err := http.Get(t.Url + "/tasks/?polling=true&status=" + status)
 	if err == nil {
 		defer r.Body.Close()
 	} else {
@@ -39,11 +40,17 @@ func (t HttpNodeTransport) Update(task shared.Task) error {
 	client := &http.Client{}
 	req, _ := http.NewRequest("PATCH", t.Url+"/tasks"+"/"+task.Uuid, bytes.NewReader(encoded))
 
-	resp, err := client.Do(req)
+	r, err := client.Do(req)
 
 	if err == nil {
-		_, err = io.Copy(ioutil.Discard, resp.Body)
-		defer resp.Body.Close()
+		_, err = io.Copy(ioutil.Discard, r.Body)
+		defer r.Body.Close()
+	} else {
+		return err
+	}
+	if r.StatusCode != 200 {
+		bs, _ := ioutil.ReadAll(r.Body)
+		return errors.New(string(bs))
 	}
 	return err
 }
