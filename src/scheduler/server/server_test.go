@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -9,9 +8,13 @@ import (
 	"scheduler/node/transport"
 	"scheduler/shared"
 	//	"strings"
+	"bytes"
+	"scheduler/client"
 	"testing"
 	"time"
 )
+
+const WAIT_TIMEOUT = 2 * time.Second
 
 func TestSubmitATask(t *testing.T) {
 	store := NewStore()
@@ -62,49 +65,134 @@ func TestSubmitATask(t *testing.T) {
 
 }
 
-func TodoNode(t *testing.T) {
+func TestIntegration_CreateTaskAndList(t *testing.T) {
 
 	store := NewStore()
+	server := httptest.NewServer(http.HandlerFunc(store.TaskHandler))
+	defer server.Close()
 
-	ts := httptest.NewServer(http.HandlerFunc(store.TaskHandler))
-	defer ts.Close()
+	client := client.Client{Url: server.URL}
+	createdTask, err := client.Execute("true")
 
-	task := shared.Task{Executable: "ls"}
-	encoded, _ := json.Marshal(task)
-	resp, _ := http.Post(ts.URL+"/tasks", "application/json", bytes.NewReader(encoded))
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	location := resp.Header.Get("Location")
-	//	uuid := strings.Split(location, "/")[2]
+	// list all tasks
+	tasks, err := client.GetTasks()
 
-	transport := transport.HttpNodeTransport{Url: ts.URL}
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if tasks[0].Executable != "true" {
+		t.Fatal("Expected a task that runs true")
+	}
+
+	if tasks[0].Status != shared.Pending {
+		t.Fatal("Expected a pending task")
+	}
+
+	// list created task
+	task, err := client.GetTask(createdTask.Uuid)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if task.Executable != "true" {
+		t.Fatal("Expected a task that runs true")
+	}
+
+	if task.Status != shared.Pending {
+		t.Fatal("Expected a pending task")
+	}
+}
+
+func TestIntegration_CreateTaskAndExecute(t *testing.T) {
+
+	store := NewStore()
+	server := httptest.NewServer(http.HandlerFunc(store.TaskHandler))
+	defer server.Close()
+
+	client := client.Client{Url: server.URL}
+	createdTask, err := client.Execute("hostname")
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	transport := transport.HttpNodeTransport{Url: server.URL}
 	node := node.Start(1, transport)
-
-	t.Log(node.Size)
 
 	node.Run()
 
-	timeout := make(chan bool, 1)
-	ch := make(chan bool, 1)
+	finishedTask := waitUntilTaskFinished(t, client, createdTask.Uuid)
+
+	if finishedTask.Output == "" {
+		t.Fatal("Output expected")
+	}
+}
+
+func TestIntegration_CreateTaskAlreadyRunningNode(t *testing.T) {
+
+	store := NewStore()
+	server := httptest.NewServer(http.HandlerFunc(store.TaskHandler))
+	defer server.Close()
+
+	transport := transport.HttpNodeTransport{Url: server.URL}
+	node := node.Start(1, transport)
+
 	go func() {
-		time.Sleep(2 * time.Second)
+		node.Run()
+	}()
+
+	client := client.Client{Url: server.URL}
+	createdTask, err := client.Execute("hostname")
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	finishedTask := waitUntilTaskFinished(t, client, createdTask.Uuid)
+
+	if finishedTask.Output == "" {
+		t.Fatal("Output expected")
+	}
+}
+
+func waitUntilTaskFinished(t *testing.T, client client.Client, uuid string) *shared.Task {
+	timeout := make(chan bool, 1)
+	ch := make(chan *shared.Task, 1)
+	go func() {
+		time.Sleep(WAIT_TIMEOUT)
 		timeout <- true
 	}()
 	go func() {
-		//		for {
-		taskResponse, _ := http.Get(ts.URL + location)
-		decoder := json.NewDecoder(taskResponse.Body)
-		var decodedTask shared.Task
-		decoder.Decode(&decodedTask)
-		if decodedTask.Status == shared.Finished {
-			ch <- true
-			//			break
+		for {
+			task, err := client.GetTask(uuid)
+
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if task.Status == shared.Finished {
+				ch <- task
+				break
+			}
 		}
-		//		}
 	}()
 	select {
-	case <-ch:
-
+	case task := <-ch:
+		return task
 	case <-timeout:
 		t.Fatal("Timeout")
+		return nil
 	}
 }
+
+// give goconvey a shot? testing with real commands (node, server, client)
+// when a task is submitted, it can be listed in all tasks
+// when a task is submitted, it can queried by id
+// when a node is started and a task submitted, it is executed (and with several nodes too)
+// when a task submitted and a node started, it is executed (and with several nodes too)

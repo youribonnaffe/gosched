@@ -10,8 +10,8 @@ import (
 
 func TestListTasks(t *testing.T) {
 	ts, store := startHttpServer()
-	store.Tasks["abc"] = &shared.Task{Executable: "ls", Status: shared.Pending}
-	store.Tasks["bde"] = &shared.Task{Executable: "ls", Status: shared.Finished}
+	store.Tasks["abc"] = &server.LockedTask{Task: &shared.Task{Executable: "ls", Status: shared.Pending}}
+	store.Tasks["bde"] = &server.LockedTask{Task: &shared.Task{Executable: "ls", Status: shared.Finished}}
 
 	transport := HttpNodeTransport{ts.URL}
 	tasks, err := transport.ListTasks(shared.Pending)
@@ -31,26 +31,27 @@ func TestListTasks(t *testing.T) {
 	ts.Close()
 }
 
-func TestEmptyListTasks(t *testing.T) {
-	ts, _ := startHttpServer()
-
-	transport := HttpNodeTransport{ts.URL}
-	emptyTasks, err := transport.ListTasks(shared.Pending)
-
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if len(emptyTasks) != 0 {
-		t.Fatal("No task expected")
-	}
-
-	ts.Close()
-}
+// polling now
+//func TestEmptyListTasks(t *testing.T) {
+//	ts, _ := startHttpServer()
+//
+//	transport := HttpNodeTransport{ts.URL}
+//	emptyTasks, err := transport.ListTasks(shared.Pending)
+//
+//	if err != nil {
+//		t.Fatal(err)
+//	}
+//
+//	if len(emptyTasks) != 0 {
+//		t.Fatal("No task expected")
+//	}
+//
+//	ts.Close()
+//}
 
 func TestUpdateTask(t *testing.T) {
 	ts, store := startHttpServer()
-	store.Tasks["abc"] = &shared.Task{Status: shared.Pending}
+	store.Tasks["abc"] = &server.LockedTask{Task: &shared.Task{Status: shared.Pending}}
 
 	transport := HttpNodeTransport{ts.URL}
 	err := transport.Update(shared.Task{Uuid: "abc", Status: shared.Finished})
@@ -59,7 +60,7 @@ func TestUpdateTask(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if store.Tasks["abc"].Status != shared.Finished {
+	if store.Tasks["abc"].Task.Status != shared.Finished {
 		t.Fatal("Finished status expected")
 	}
 

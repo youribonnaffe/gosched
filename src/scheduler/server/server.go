@@ -18,7 +18,7 @@ type Store struct {
 
 type LockedTask struct {
 	lock sync.Mutex
-	task *shared.Task
+	Task *shared.Task
 }
 
 var pollingClients chan chan bool = make(chan chan bool)
@@ -45,7 +45,7 @@ func (store *Store) TaskHandler(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			write(w, task.task)
+			write(w, task.Task)
 			return
 		} else if r.Method == "PATCH" {
 			log.Println("Updating", taskId)
@@ -68,19 +68,19 @@ func (store *Store) TaskHandler(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				log.Println(err)
 			} else {
-				err := task.task.ChangeStatus(newState.Status)
+				err := task.Task.ChangeStatus(newState.Status)
 				if err != nil {
 					http.Error(w, "Task already running", http.StatusInternalServerError)
 					task.lock.Unlock()
 					return
 				}
-				task.task.Output = newState.Output
+				task.Task.Output = newState.Output
 				log.Println("Update", newState)
 			}
 
 			task.lock.Unlock()
 
-			write(w, task.task)
+			write(w, task.Task)
 			log.Println("Done Updating", taskId)
 			return
 		}
@@ -95,7 +95,7 @@ func (store *Store) TaskHandler(w http.ResponseWriter, r *http.Request) {
 		task.Status = shared.Pending
 
 		store.lock.Lock() // TODO on read too
-		store.Tasks[task.Uuid] = &LockedTask{task: task}
+		store.Tasks[task.Uuid] = &LockedTask{Task: task}
 		store.lock.Unlock()
 
 		log.Println("Saving", task)
@@ -125,8 +125,8 @@ func (store *Store) TaskHandler(w http.ResponseWriter, r *http.Request) {
 			v := make([]*shared.Task, 0, len(store.Tasks))
 
 			for _, value := range store.Tasks {
-				if status == "" || value.task.Status == status {
-					v = append(v, value.task)
+				if status == "" || value.Task.Status == status {
+					v = append(v, value.Task)
 				}
 			}
 
@@ -145,8 +145,8 @@ func (store *Store) TaskHandler(w http.ResponseWriter, r *http.Request) {
 				v := make([]*shared.Task, 0, len(store.Tasks))
 
 				for _, value := range store.Tasks {
-					if status == "" || value.task.Status == status {
-						v = append(v, value.task)
+					if status == "" || value.Task.Status == status {
+						v = append(v, value.Task)
 					}
 				}
 
@@ -159,8 +159,8 @@ func (store *Store) TaskHandler(w http.ResponseWriter, r *http.Request) {
 		v := make([]*shared.Task, 0, len(store.Tasks))
 
 		for _, value := range store.Tasks {
-			if status == "" || value.task.Status == status {
-				v = append(v, value.task)
+			if status == "" || value.Task.Status == status {
+				v = append(v, value.Task)
 			}
 		}
 		encoded, _ := json.Marshal(v)
