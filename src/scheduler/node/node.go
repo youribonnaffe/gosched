@@ -69,7 +69,7 @@ func worker(id int, t transport.Protocol, tasks chan shared.Task) {
 				} else {
 					log.Println("###", string(line))
 					out.Write(line)
-					// log streaming here?
+					// log streaming here? TODO missing \n
 				}
 			}
 		}()

@@ -33,7 +33,11 @@ func (c *Client) Execute(executable string) (*shared.Task, error) {
 	}
 
 	decoder := json.NewDecoder(req.Body)
-	decoder.Decode(&task)
+	err = decoder.Decode(&task)
+
+	if err != nil {
+		return nil, err
+	}
 
 	return &task, nil
 }

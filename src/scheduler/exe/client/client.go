@@ -7,32 +7,9 @@ import (
 )
 
 func main() {
-
 	log.SetFlags(log.Lmicroseconds)
 
-	var command string
-	const (
-		usageCommand = "Command to run"
-	)
-	flag.StringVar(&command, "command", "", usageCommand)
-	flag.StringVar(&command, "c", "", usageCommand+" (shorthand)")
-
-	var list string
-	const (
-		usageList = "Retrieve a given task (by uuid) or all tasks"
-	)
-	flag.StringVar(&list, "list", "", usageList)
-	flag.StringVar(&list, "l", "", usageList+" (shorthand)")
-
-	var url string
-	const (
-		defaultUrl = "http://localhost:8080"
-		usageUrl   = "URL of server"
-	)
-	flag.StringVar(&url, "url", defaultUrl, usageUrl)
-	flag.StringVar(&url, "u", defaultUrl, usageUrl+" (shorthand)")
-
-	flag.Parse()
+	command, list, url := parseArguments()
 
 	client := client.Client{Url: url}
 
@@ -44,13 +21,14 @@ func main() {
 		}
 
 		log.Println(task.Uuid)
+
 	} else if list != "" {
 		task, err := client.GetTask(list)
 		if err != nil {
 			log.Fatal(err)
 		}
-
 		log.Println(task)
+
 	} else {
 		tasks, err := client.GetTasks()
 		if err != nil {
@@ -62,4 +40,29 @@ func main() {
 		}
 	}
 
+}
+
+func parseArguments() (command string, list string, url string) {
+	const (
+		usageCommand = "Command to run"
+	)
+	flag.StringVar(&command, "command", "", usageCommand)
+	flag.StringVar(&command, "c", "", usageCommand+" (shorthand)")
+
+	const (
+		usageList = "Retrieve a given task (by uuid) or all tasks"
+	)
+	flag.StringVar(&list, "list", "", usageList)
+	flag.StringVar(&list, "l", "", usageList+" (shorthand)")
+
+	const (
+		defaultUrl = "http://localhost:8080"
+		usageUrl   = "URL of server"
+	)
+	flag.StringVar(&url, "url", defaultUrl, usageUrl)
+	flag.StringVar(&url, "u", defaultUrl, usageUrl+" (shorthand)")
+
+	flag.Parse()
+
+	return command, list, url
 }
