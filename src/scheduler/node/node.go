@@ -30,7 +30,7 @@ func (node Node) Run() bool {
 		if len(tasks) == 0 {
 			return false
 		}
-		log.Println("Got", tasks)
+		log.Println("Got", len(tasks), "tasks to run")
 		for _, task := range tasks {
 			node.tasks <- task
 		}
@@ -49,7 +49,7 @@ func worker(id int, t transport.Protocol, tasks chan shared.Task) {
 		err := t.Update(shared.Task{Status: shared.Running, Uuid: task.Uuid})
 
 		if err != nil {
-			log.Println("Cannot start task, probably already running somewhere", err)
+			log.Println("Cannot start task, probably already running somewhere", task.Uuid)
 			break
 		}
 

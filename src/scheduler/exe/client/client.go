@@ -2,12 +2,15 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
+	"os"
 	"scheduler/client"
+	"scheduler/shared"
+	"sort"
 )
 
 func main() {
-	log.SetFlags(log.Lmicroseconds)
 
 	command, list, url := parseArguments()
 
@@ -17,17 +20,17 @@ func main() {
 		task, err := client.Execute(command)
 
 		if err != nil {
-			log.Fatal(err)
+			fmt.Fprintf(os.Stderr, "Could not execute command %s\n", err)
 		}
 
-		log.Println(task.Uuid)
+		fmt.Println(task.Uuid)
 
 	} else if list != "" {
 		task, err := client.GetTask(list)
 		if err != nil {
 			log.Fatal(err)
 		}
-		log.Println(task)
+		fmt.Println(task.String())
 
 	} else {
 		tasks, err := client.GetTasks()
@@ -35,8 +38,9 @@ func main() {
 			log.Fatal(err)
 		}
 
+		sort.Sort(shared.BySubmittedTime(tasks))
 		for _, task := range tasks {
-			log.Println(task)
+			fmt.Println(task.String())
 		}
 	}
 

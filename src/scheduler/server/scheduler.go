@@ -83,15 +83,15 @@ func (scheduler *Scheduler) ListTasks(status string) []shared.Task {
 }
 
 func changeStatus(task *shared.Task, newStatus string) error {
-	if task.Status == shared.Running && newStatus == shared.Running {
-		return errors.New("Task already running!")
+	if task.Status != shared.Pending && newStatus == shared.Running {
+		return errors.New("Task already running or already finished!")
 	} else {
 		task.Status = newStatus
 		return nil
 	}
 }
 
-func uuid() (uuid string) {
+func uuid() (uuid string) { // TODO test collision?
 	b := make([]byte, 16)
 	_, err := rand.Read(b)
 	if err != nil {

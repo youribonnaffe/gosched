@@ -37,6 +37,8 @@ func main() {
 	for {
 		if !node.Run() {
 			time.Sleep(1 * time.Millisecond)
+		} else {
+			time.Sleep(100 * time.Millisecond) // to avoid too much concurrent startup of tasks
 		}
 	}
 
