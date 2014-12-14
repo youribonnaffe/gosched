@@ -1,10 +1,17 @@
 package shared
 
+import (
+	"time"
+)
+
 type Task struct {
-	Executable string
-	Status     string
-	Uuid       string
-	Output     string
+	Executable        string
+	Status            string
+	Uuid              string
+	Output            string
+	SubmittedTime     time.Time
+	StartTime         time.Time
+	ExecutionDuration time.Duration
 }
 
 const (

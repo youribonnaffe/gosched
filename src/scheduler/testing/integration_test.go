@@ -56,6 +56,10 @@ func TestIntegration_CreateTaskAndList(t *testing.T) {
 	if task.Status != shared.Pending {
 		t.Error("Expected a pending task")
 	}
+
+	if task.SubmittedTime.After(time.Now()) {
+		t.Error("A submitted time should be set")
+	}
 }
 
 func TestIntegration_CreateTaskAndExecute(t *testing.T) {
@@ -104,6 +108,14 @@ func TestIntegration_CreateTaskAlreadyRunningNode(t *testing.T) {
 	}
 
 	finishedTask := waitUntilTaskFinished(t, client, createdTask.Uuid)
+
+	if finishedTask.StartTime.Before(finishedTask.SubmittedTime) {
+		t.Error("Start time should be after submitted time")
+	}
+
+	if finishedTask.ExecutionDuration <= 0 {
+		t.Error("Task should last at least 1 nanosecond")
+	}
 
 	if finishedTask.Output == "" {
 		t.Error("Output expected")

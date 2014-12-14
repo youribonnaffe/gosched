@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"scheduler/shared"
 	"sync"
+	"time"
 )
 
 type Scheduler struct {
@@ -27,6 +28,7 @@ func (scheduler *Scheduler) CreateTask(newTask shared.Task) shared.Task {
 	task.Uuid = uuid()
 	task.Status = shared.Pending
 	task.Executable = newTask.Executable
+	task.SubmittedTime = time.Now()
 
 	scheduler.lock.Lock() // TODO on read too
 	scheduler.tasks[task.Uuid] = &LockedTask{task: &task}
@@ -61,6 +63,8 @@ func (scheduler *Scheduler) UpdateTask(newState shared.Task) (*shared.Task, erro
 	}
 
 	lockedTask.task.Output = newState.Output
+	lockedTask.task.StartTime = newState.StartTime
+	lockedTask.task.ExecutionDuration = newState.ExecutionDuration
 
 	lockedTask.lock.Unlock()
 	return lockedTask.task, nil

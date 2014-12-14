@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"scheduler/node/transport"
 	"scheduler/shared"
+	"time"
 )
 
 type Node struct {
@@ -52,6 +53,7 @@ func worker(id int, t transport.Protocol, tasks chan shared.Task) {
 			break
 		}
 
+		startTime := time.Now()
 		cmd := exec.Command(task.Executable)
 		stdout, _ := cmd.StdoutPipe()
 		if err := cmd.Start(); err != nil {
@@ -74,12 +76,16 @@ func worker(id int, t transport.Protocol, tasks chan shared.Task) {
 			}
 		}()
 		<-waitCmdOutput
+		var executionDuration time.Duration
 		if err := cmd.Wait(); err != nil {
 			log.Println(err)
 		} else {
+			executionDuration = time.Since(startTime)
 			log.Println("done working on", id, task.Uuid, "output is", out.String())
 		}
 
-		t.Update(shared.Task{Uuid: task.Uuid, Status: shared.Finished, Output: out.String()})
+		t.Update(shared.Task{Uuid: task.Uuid, Status: shared.Finished,
+			Output:    out.String(),
+			StartTime: startTime, ExecutionDuration: executionDuration})
 	}
 }
