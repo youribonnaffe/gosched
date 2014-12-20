@@ -82,7 +82,7 @@ func TestIntegration_CreateTaskAndExecute(t *testing.T) {
 
 	finishedTask := waitUntilTaskFinished(t, client, createdTask.Uuid)
 
-	if finishedTask.Output == "" {
+	if finishedTask.Output[0] == "" {
 		t.Error("Output expected")
 	}
 }
@@ -117,7 +117,7 @@ func TestIntegration_CreateTaskAlreadyRunningNode(t *testing.T) {
 		t.Error("Task should last at least 1 nanosecond")
 	}
 
-	if finishedTask.Output == "" {
+	if finishedTask.Output[0] == "" {
 		t.Error("Output expected")
 	}
 }

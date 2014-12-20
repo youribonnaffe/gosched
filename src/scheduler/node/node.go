@@ -2,7 +2,6 @@ package node
 
 import (
 	"bufio"
-	"bytes"
 	"log"
 	"os/exec"
 	"scheduler/node/transport"
@@ -59,7 +58,6 @@ func worker(id int, t transport.Protocol, tasks chan shared.Task) {
 		if err := cmd.Start(); err != nil {
 			log.Println(err)
 		}
-		var out bytes.Buffer
 		waitCmdOutput := make(chan bool)
 		go func() {
 			bufCmdOut := bufio.NewReader(stdout)
@@ -69,23 +67,23 @@ func worker(id int, t transport.Protocol, tasks chan shared.Task) {
 					waitCmdOutput <- true
 					break
 				} else {
-					log.Println("###", string(line))
-					out.Write(line)
+					log.Println("#", task.Uuid, "#", string(line))
+					t.AddOutputToTask(task.Uuid, string(line))
 					// log streaming here? TODO missing \n
+					// TODO stream every n seconds instead of every line
 				}
 			}
 		}()
-		<-waitCmdOutput
+		<-waitCmdOutput // TODO wait streaming finished
 		var executionDuration time.Duration
 		if err := cmd.Wait(); err != nil {
 			log.Println(err)
 		} else {
 			executionDuration = time.Since(startTime)
-			log.Println("done working on", id, task.Uuid, "output is", out.String())
+			log.Println("done working on", id, task.Uuid)
 		}
 
 		t.Update(shared.Task{Uuid: task.Uuid, Status: shared.Finished,
-			Output:    out.String(),
 			StartTime: startTime, ExecutionDuration: executionDuration})
 	}
 }

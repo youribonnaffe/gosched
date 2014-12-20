@@ -71,3 +71,23 @@ func (c *Client) GetTask(uuid string) (task *shared.Task, err error) {
 
 	return task, nil
 }
+
+func (c *Client) Tail(uuid string) (lines []string, err error) {
+
+	r, err := http.Get(c.Url + "/tasks/" + uuid + "/output?tail=true")
+	if err == nil {
+		defer r.Body.Close()
+	} else {
+		return
+	}
+
+	if r.StatusCode != http.StatusOK {
+		err = errors.New("Task not found")
+		return
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	decoder.Decode(&lines)
+
+	return
+}

@@ -9,7 +9,7 @@ type Task struct {
 	Executable        string
 	Status            string
 	Uuid              string
-	Output            string
+	Output            []string
 	SubmittedTime     time.Time
 	StartTime         time.Time
 	ExecutionDuration time.Duration

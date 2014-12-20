@@ -62,7 +62,6 @@ func (scheduler *Scheduler) UpdateTask(newState shared.Task) (*shared.Task, erro
 		return nil, err
 	}
 
-	lockedTask.task.Output = newState.Output
 	lockedTask.task.StartTime = newState.StartTime
 	lockedTask.task.ExecutionDuration = newState.ExecutionDuration
 
@@ -80,6 +79,17 @@ func (scheduler *Scheduler) ListTasks(status string) []shared.Task {
 	}
 
 	return v
+}
+
+func (scheduler *Scheduler) AddOutputToTask(uuid string, output string) (err error) {
+	lockedTask, found := scheduler.tasks[uuid]
+
+	if !found {
+		return errors.New("Task not found")
+	}
+
+	lockedTask.task.Output = append(lockedTask.task.Output, output)
+	return
 }
 
 func changeStatus(task *shared.Task, newStatus string) error {
