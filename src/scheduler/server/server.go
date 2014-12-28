@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"scheduler/shared"
+	"strconv"
 	"strings"
 )
 
@@ -32,23 +33,44 @@ func (scheduler *Scheduler) TaskHandler(w http.ResponseWriter, r *http.Request) 
 
 			if len(pathParts) >= 4 && pathParts[3] == "output" {
 				tailing := r.URL.Query().Get("tail")
-				log.Println("Get task output tailing=", tailing)
+				log.Println("Get task output tailing is", tailing)
 
 				if tailing == "true" {
+					fromLine, err := strconv.Atoi(r.URL.Query().Get("fromLine"))
 
-					if task.Status != shared.Finished {
+					if err != nil {
+						log.Println(err)
+						http.Error(w, "fromLine is malformed", 400)
+						return
+					}
+
+					if task.Status != shared.Finished { // TODO lock?
 
 						pollingClient := make(chan string)
 
 						select {
 						case tailPollingClients <- pollingClient:
-							output := <-pollingClient
-							outputArray := make([]string, 1)
-							outputArray[0] = output
-							encoded, _ := json.Marshal(outputArray)
-							w.Write(encoded)
-							return
+							select {
+
+							case <-pollingClient:
+								task, _ := scheduler.GetTask(taskId)
+								//							outputArray := make([]string, 1)
+								//							outputArray[0] = output
+								//							encoded, _ := json.Marshal(outputArray)
+								//							w.Write(encoded)
+
+								log.Println(fromLine, len(task.Output), task.Output[fromLine:len(task.Output)])
+								encoded, _ := json.Marshal(task.Output[fromLine:len(task.Output)])
+								w.Write(encoded)
+								return
+
+							}
 						}
+					} else {
+						log.Println(fromLine, len(task.Output)-1, task.Output[fromLine:len(task.Output)])
+						encoded, _ := json.Marshal(task.Output[fromLine:len(task.Output)])
+						w.Write(encoded)
+						return
 					}
 
 				}
@@ -106,7 +128,21 @@ func (scheduler *Scheduler) TaskHandler(w http.ResponseWriter, r *http.Request) 
 				return
 			} else {
 				log.Println("Update", newState)
-				task, err := scheduler.UpdateTask(newState)
+				task, _ := scheduler.UpdateTask(newState)
+
+				if task.Status == shared.Finished {
+				Loop2:
+					for {
+						select {
+						case pollingClient := <-tailPollingClients:
+							close(pollingClient)
+						default:
+							break Loop2
+						}
+					}
+					return
+				}
+
 				if err != nil {
 					http.Error(w, "Task is already running", http.StatusInternalServerError)
 					return

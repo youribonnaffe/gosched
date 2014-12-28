@@ -141,6 +141,8 @@ func waitUntilTaskFinished(t *testing.T, client client.Client, uuid string) *sha
 				ch <- task
 				break
 			}
+
+			time.Sleep(50 * time.Millisecond)
 		}
 	}()
 	select {

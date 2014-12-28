@@ -7,6 +7,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"scheduler/shared"
+	"strconv"
 )
 
 type Client struct {
@@ -72,9 +73,9 @@ func (c *Client) GetTask(uuid string) (task *shared.Task, err error) {
 	return task, nil
 }
 
-func (c *Client) Tail(uuid string) (lines []string, err error) {
+func (c *Client) Tail(uuid string, fromLine int) (lines []string, err error) {
 
-	r, err := http.Get(c.Url + "/tasks/" + uuid + "/output?tail=true")
+	r, err := http.Get(c.Url + "/tasks/" + uuid + "/output?tail=true&fromLine=" + strconv.Itoa(fromLine))
 	if err == nil {
 		defer r.Body.Close()
 	} else {
