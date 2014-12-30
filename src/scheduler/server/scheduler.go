@@ -11,16 +11,17 @@ import (
 
 type Scheduler struct {
 	lock  sync.RWMutex
-	tasks map[string]*LockedTask
+	tasks map[string]*lockedTask
 }
 
-type LockedTask struct {
-	lock sync.Mutex
-	task *shared.Task
+type lockedTask struct {
+	lock              sync.Mutex
+	task              *shared.Task
+	taskOutputClients chan chan struct{}
 }
 
 func NewScheduler() *Scheduler {
-	return &Scheduler{tasks: make(map[string]*LockedTask)}
+	return &Scheduler{tasks: make(map[string]*lockedTask)}
 }
 
 func (scheduler *Scheduler) CreateTask(newTask shared.Task) shared.Task {
@@ -31,7 +32,7 @@ func (scheduler *Scheduler) CreateTask(newTask shared.Task) shared.Task {
 	task.SubmittedTime = time.Now()
 
 	scheduler.lock.Lock() // TODO on read too
-	scheduler.tasks[task.Uuid] = &LockedTask{task: &task}
+	scheduler.tasks[task.Uuid] = &lockedTask{task: &task, taskOutputClients: make(chan chan struct{})}
 	scheduler.lock.Unlock()
 
 	return task
@@ -65,6 +66,8 @@ func (scheduler *Scheduler) UpdateTask(newState shared.Task) (*shared.Task, erro
 	lockedTask.task.StartTime = newState.StartTime
 	lockedTask.task.ExecutionDuration = newState.ExecutionDuration
 
+	closeTaskOutputClients(lockedTask)
+
 	lockedTask.lock.Unlock()
 	return lockedTask.task, nil
 }
@@ -89,6 +92,8 @@ func (scheduler *Scheduler) AddOutputToTask(uuid string, output string) (err err
 	}
 
 	lockedTask.task.Output = append(lockedTask.task.Output, output)
+
+	unblockOutputClients(lockedTask)
 	return
 }
 

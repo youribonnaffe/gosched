@@ -11,7 +11,6 @@ import (
 
 // TODO move blocking logic to scheduler?
 var nodePollingClients chan chan bool = make(chan chan bool)
-var tailPollingClients chan chan string = make(chan chan string)
 
 func (scheduler *Scheduler) TaskHandler(w http.ResponseWriter, r *http.Request) {
 	pathParts := strings.Split(r.URL.Path, "/")
@@ -44,35 +43,18 @@ func (scheduler *Scheduler) TaskHandler(w http.ResponseWriter, r *http.Request) 
 						return
 					}
 
-					if task.Status != shared.Finished { // TODO lock?
+					taskOutput, err := scheduler.TailTaskOutput(taskId, fromLine)
 
-						pollingClient := make(chan string)
-
-						select {
-						case tailPollingClients <- pollingClient:
-							select {
-
-							case <-pollingClient:
-								task, _ := scheduler.GetTask(taskId)
-								//							outputArray := make([]string, 1)
-								//							outputArray[0] = output
-								//							encoded, _ := json.Marshal(outputArray)
-								//							w.Write(encoded)
-
-								log.Println(fromLine, len(task.Output), task.Output[fromLine:len(task.Output)])
-								encoded, _ := json.Marshal(task.Output[fromLine:len(task.Output)])
-								w.Write(encoded)
-								return
-
-							}
-						}
-					} else {
-						log.Println(fromLine, len(task.Output)-1, task.Output[fromLine:len(task.Output)])
-						encoded, _ := json.Marshal(task.Output[fromLine:len(task.Output)])
-						w.Write(encoded)
+					if err != nil {
+						log.Println(err)
+						http.Error(w, "Cannot get output", 500)
 						return
 					}
 
+					log.Println(fromLine, len(taskOutput)-1, taskOutput[fromLine:len(taskOutput)])
+					encoded, _ := json.Marshal(taskOutput[fromLine:len(taskOutput)])
+					w.Write(encoded)
+					return
 				}
 				encoded, _ := json.Marshal(task.Output)
 				w.Write(encoded)
@@ -104,16 +86,6 @@ func (scheduler *Scheduler) TaskHandler(w http.ResponseWriter, r *http.Request) 
 					return
 				} else {
 					scheduler.AddOutputToTask(taskId, output)
-
-				Loop:
-					for {
-						select {
-						case pollingClient := <-tailPollingClients:
-							pollingClient <- output
-						default:
-							break Loop
-						}
-					}
 					return
 				}
 
@@ -129,19 +101,6 @@ func (scheduler *Scheduler) TaskHandler(w http.ResponseWriter, r *http.Request) 
 			} else {
 				log.Println("Update", newState)
 				task, _ := scheduler.UpdateTask(newState)
-
-				if task.Status == shared.Finished {
-				Loop2:
-					for {
-						select {
-						case pollingClient := <-tailPollingClients:
-							close(pollingClient)
-						default:
-							break Loop2
-						}
-					}
-					return
-				}
 
 				if err != nil {
 					http.Error(w, "Task is already running", http.StatusInternalServerError)

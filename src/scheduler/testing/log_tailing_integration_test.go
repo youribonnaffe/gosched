@@ -75,7 +75,7 @@ func TestIntegration_TaskRunning(t *testing.T) {
 	node := node.Start(1, transport)
 
 	client := client.Client{Url: server.URL}
-	createdTask, err := client.Execute("/home/youri/dev/gosched/test.sh")
+	createdTask, err := client.Execute("./print_and_sleep.sh")
 
 	if err != nil {
 		t.Error(err)

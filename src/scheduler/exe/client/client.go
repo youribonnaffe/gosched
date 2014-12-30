@@ -12,7 +12,7 @@ import (
 
 func main() {
 
-	command, list, url := parseArguments()
+	command, list, url, output := parseArguments()
 
 	client := client.Client{Url: url}
 
@@ -32,6 +32,22 @@ func main() {
 		}
 		fmt.Println(task.String())
 
+	} else if output != "" {
+		fromLine := 0
+
+		for {
+			output, err := client.Tail(output, fromLine)
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			for _, line := range output {
+				fmt.Println(line)
+			}
+
+			fromLine += len(output)
+		}
+
 	} else {
 		tasks, err := client.GetTasks()
 		if err != nil {
@@ -46,7 +62,7 @@ func main() {
 
 }
 
-func parseArguments() (command string, list string, url string) {
+func parseArguments() (command string, list string, url string, output string) {
 	const (
 		usageCommand = "Command to run"
 	)
@@ -60,6 +76,12 @@ func parseArguments() (command string, list string, url string) {
 	flag.StringVar(&list, "l", "", usageList+" (shorthand)")
 
 	const (
+		usageOutput = "Get output of a task"
+	)
+	flag.StringVar(&output, "output", "", usageOutput)
+	flag.StringVar(&output, "o", "", usageOutput+" (shorthand)")
+
+	const (
 		defaultUrl = "http://localhost:8080"
 		usageUrl   = "URL of server"
 	)
@@ -68,5 +90,5 @@ func parseArguments() (command string, list string, url string) {
 
 	flag.Parse()
 
-	return command, list, url
+	return command, list, url, output
 }
